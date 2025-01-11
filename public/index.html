@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mock Interview Prototype</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            text-align: center;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #question {
+            font-size: 18px;
+            margin: 20px 0;
+        }
+
+        #status {
+            margin: 10px;
+            color: green;
+        }
+
+        .feedback {
+            margin: 20px auto;
+            text-align: left;
+            max-width: 600px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            background-color: #f9f9f9;
+        }
+
+        .feedback h3 {
+            margin: 0;
+            color: #333;
+        }
+
+        .feedback p {
+            margin: 10px 0;
+            color: #555;
+        }
+
+        .feedback ul {
+            margin: 10px 0;
+            padding-left: 20px;
+            color: #555;
+        }
+
+        .feedback ul li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>MockMate Voice Input Prototype</h1>
+    <div>
+        <label for="skill-select">Select a Skill:</label>
+        <select id="skill-select">
+            <option value="javascript">JavaScript</option>
+            <option value="python">Python</option>
+            <option value="data-structures">Data Structures</option>
+            <option value="algorithms">Algorithms</option>
+            <option value="react">React</option>
+        </select>
+        <button onclick="generateQuestion()">Generate Questions</button>
+    </div>
+    <div id="question-box">
+        <p id="question">Press "Generate Question" to begin!</p>
+        <button onclick="loadQuestions()">Load Questions</button>
+    </div>
+    <button onclick="startRecording()" id="start-answer">Start Answering</button>
+    <button onclick="stopRecording()" id="stop-answer">Stop Answering</button>
+    <br />
+    <button onclick="previousQuestion()" id="prev-question" disabled>Previous</button>
+    <button onclick="nextQuestion()" id="next-question" disabled>Next</button>
+
+    <p id="status"></p>
+
+    <div id="feedback-container" class="feedback" style="display: none;">
+        <h3>Feedback:</h3>
+        <p id="accuracy"></p>
+        <p><strong>Missing Points:</strong></p>
+        <ul id="missing-points"></ul>
+        <p id="suggestions"></p>
+    </div>
+
+    <script>
+        let questions = [];
+        let currentQuestionIndex = 0;
+        let responses = {};
+        let recognition;
+
+        async function generateQuestion() {
+            const skill = document.getElementById('skill-select').value;
+
+            try {
+                const response = await fetch(`/generate-question?skill=${encodeURIComponent(skill)}`)
+            } catch (error) {
+                console.error('Error generating question:', error);
+            }
+        }
+
+
+        async function loadQuestions() {
+            const response = await fetch('/get-question');
+            const data = await response.json();
+            questions = data.questions;
+            console.log(questions)
+
+            if (questions.length > 0) {
+                currentQuestionIndex = 0;
+                displayQuestion();
+                enableNavigationButtons();
+            } else {
+                document.getElementById('question').textContent = "No question available"
+            }
+        }
+
+        function displayQuestion() {
+            const currentQuestion = questions[currentQuestionIndex];
+            document.getElementById('question').textContent = `Question ${currentQuestionIndex + 1}: ${currentQuestion.question}`;
+            document.getElementById('status').textContent = responses[currentQuestion.id] ? `You answered: ${responses[currentQuestion.id]}` : `No answer yet`;
+        }
+
+        function enableNavigationButtons() {
+            document.getElementById('start-answer').disabled = false;
+            document.getElementById("stop-answer").disabled = false;
+            document.getElementById('prev-question').disabled = currentQuestionIndex === 0;
+            document.getElementById('next-question').disabled = currentQuestionIndex === questions.length - 1;
+
+        }
+
+        function previousQuestion() {
+            if (currentQuestionIndex > 0) {
+                currentQuestionIndex--;
+                displayQuestion();
+                enableNavigationButtons();
+            }
+        }
+
+        function nextQuestion() {
+            if (currentQuestionIndex < questions.length - 1) {
+                currentQuestionIndex++;
+                displayQuestion();
+                enableNavigationButtons();
+            }
+        }
+
+        // Start recording voice and convert it to text
+        function startRecording() {
+            if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+                alert('Your browser does not support speech recognition. Please use Chrome.');
+                return;
+            }
+
+            // Initialize the SpeechRecognition instance
+            recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            recognition.continuous = true; // Enable continuous recognition
+
+            recognition.start();
+
+            recognition.onresult = async (event) => {
+                const userInput = event.results[event.results.length - 1][0].transcript; // Get the latest result
+                document.getElementById('status').textContent = `You answered: "${userInput}"`;
+
+                const currentQuestion = questions[currentQuestionIndex];
+                responses[currentQuestion.id] = userInput;
+                await verifyAnswer(currentQuestion.id, userInput);
+            };
+
+            recognition.onerror = (event) => {
+                alert('Speech recognition error: ' + event.error);
+            };
+
+            recognition.onend = () => {
+                console.log('Speech recognition stopped.');
+            };
+
+            document.getElementById('status').textContent = 'Recording...';
+        }
+
+        // Stop recording
+        function stopRecording() {
+            if (recognition) {
+                recognition.stop();
+                document.getElementById('status').textContent = 'Recording stopped.';
+            } else {
+                alert('Speech recognition is not active.');
+            }
+        }
+
+        // Verify the answer with the backend and display feedback
+        async function verifyAnswer(questionId, userInput) {
+            const response = await fetch('/verify-answer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ questionId, userInput })
+            });
+
+            const data = await response.json();
+            console.log(data)
+            displayFeedback(data);
+        }
+
+        // Display feedback on the frontend
+        function displayFeedback(feedback) {
+            document.getElementById('feedback-container').style.display = 'block';
+            document.getElementById('accuracy').textContent = `Accuracy: ${feedback.accuracy}%`;
+
+            const missingPointsContainer = document.getElementById('missing-points');
+            missingPointsContainer.innerHTML = ''; // Clear previous points
+            if (feedback.missingPoints && feedback.missingPoints.length > 0) {
+                feedback.missingPoints.forEach(point => {
+                    const li = document.createElement('li');
+                    li.textContent = point;
+                    missingPointsContainer.appendChild(li);
+                });
+            } else {
+                missingPointsContainer.innerHTML = '<li>None</li>';
+            }
+
+            document.getElementById('suggestions').textContent = `Suggestions: ${feedback.suggestions}`;
+        }
+    </script>
+</body>
+
+</html>
