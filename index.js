@@ -17,8 +17,6 @@ let session = {
   questions: [],
 };
 
-const AI_API_KEY = "AIzaSyC3PkiCaiThFY3ARg2Py57pudyvWuUjjSE";
-
 app.get("/generate-question", async (req, res) => {
   const skill = req.query.skill || "General";
   console.log(skill);
@@ -27,7 +25,7 @@ app.get("/generate-question", async (req, res) => {
       Generate a list of 5 ${skill} interview questions with its correct answers.
       Format the response as an array of objects with each object containing a "question" and "answer".
        `;
-    const genAI = new GoogleGenerativeAI(AI_API_KEY);
+    const genAI = new GoogleGenerativeAI(process.env.AI_API_KEY);
     const schema = {
       description: "An array of interview questions and their correct answers",
       type: SchemaType.ARRAY,
